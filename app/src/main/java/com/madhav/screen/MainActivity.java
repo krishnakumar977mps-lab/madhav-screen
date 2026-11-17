@@ -135,8 +135,14 @@ public class MainActivity extends Activity {
     }
 
     private void startWakeService() {
-        Intent intent = new Intent(this, WakeService.class);
-        startForegroundService(intent);
+        try {
+            Intent intent = new Intent(this, WakeService.class);
+            startForegroundService(intent);
+            Toast.makeText(this, "Madhav Wake Service Starting...", Toast.LENGTH_LONG).show();
+        } catch (Exception e) {
+            Toast.makeText(this, "Wake Service Error: " + e.getMessage(), Toast.LENGTH_LONG).show();
+            android.util.Log.e("HeyMadhav", "Wake Service Start Failed", e);
+        }
     }
 
     @Override
