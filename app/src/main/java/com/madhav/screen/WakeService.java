@@ -36,6 +36,11 @@ public class WakeService extends Service implements RecognitionListener {
     @Override
     public void onCreate() {
         super.onCreate();
+        Log.e("HeyMadhav", "WAKE SERVICE ONCREATE STARTED");
+        android.widget.Toast.makeText(
+            this, "MADHAV WAKE SERVICE STARTED",
+            android.widget.Toast.LENGTH_LONG
+        ).show();
 
         NotificationChannel channel = new NotificationChannel(
             "madhav_wake",
