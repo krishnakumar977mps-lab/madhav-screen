@@ -9,6 +9,10 @@ import android.media.projection.*;
 import android.os.*;
 import android.provider.MediaStore;
 import java.io.OutputStream;
+import java.nio.ByteBuffer;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Locale;
 
 public class CaptureService extends Service {
     private MediaProjection projection;
@@ -18,6 +22,7 @@ public class CaptureService extends Service {
     @Override
     public void onCreate() {
         super.onCreate();
+
         if (Build.VERSION.SDK_INT >= 26) {
             NotificationChannel channel = new NotificationChannel(
                 "madhav_capture", "Madhav Screen Capture",
@@ -25,11 +30,13 @@ public class CaptureService extends Service {
             getSystemService(NotificationManager.class)
                 .createNotificationChannel(channel);
         }
+
         Notification notification = new Notification.Builder(this, "madhav_capture")
             .setContentTitle("Madhav Screen")
             .setContentText("Screen capture is active")
             .setSmallIcon(android.R.drawable.ic_menu_camera)
             .build();
+
         startForeground(1, notification);
     }
 
@@ -40,6 +47,7 @@ public class CaptureService extends Service {
 
         MediaProjectionManager manager =
             (MediaProjectionManager) getSystemService(MEDIA_PROJECTION_SERVICE);
+
         projection = manager.getMediaProjection(resultCode, data);
 
         if (projection == null) {
@@ -60,36 +68,69 @@ public class CaptureService extends Service {
         int density = metrics.densityDpi;
 
         reader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 2);
+
         reader.setOnImageAvailableListener(r -> {
             Image image = null;
+            Bitmap bitmap = null;
+
             try {
                 image = r.acquireLatestImage();
                 if (image == null) return;
 
+                int w = image.getWidth();
+                int h = image.getHeight();
+
                 Image.Plane plane = image.getPlanes()[0];
-                Bitmap bitmap = Bitmap.createBitmap(
-                    width, height, Bitmap.Config.ARGB_8888);
-                bitmap.copyPixelsFromBuffer(plane.getBuffer());
+                ByteBuffer buffer = plane.getBuffer();
+                int rowStride = plane.getRowStride();
+                int pixelStride = plane.getPixelStride();
+
+                int[] pixels = new int[w * h];
+
+                for (int y = 0; y < h; y++) {
+                    for (int x = 0; x < w; x++) {
+                        int index = y * rowStride + x * pixelStride;
+
+                        int red = buffer.get(index) & 0xff;
+                        int green = buffer.get(index + 1) & 0xff;
+                        int blue = buffer.get(index + 2) & 0xff;
+                        int alpha = buffer.get(index + 3) & 0xff;
+
+                        pixels[y * w + x] =
+                            (alpha << 24) | (red << 16) | (green << 8) | blue;
+                    }
+                }
+
+                bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+                bitmap.setPixels(pixels, 0, w, 0, 0, w, h);
 
                 ContentValues values = new ContentValues();
-                values.put(MediaStore.Images.Media.DISPLAY_NAME, "madhav_screen.png");
+                String filename = "madhav_screen_" +
+                    new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US)
+                    .format(new Date()) + ".png";
+
+                values.put(MediaStore.Images.Media.DISPLAY_NAME, filename);
                 values.put(MediaStore.Images.Media.MIME_TYPE, "image/png");
-                values.put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/HeyMadhav");
+                values.put(MediaStore.Images.Media.RELATIVE_PATH,
+                    "Pictures/HeyMadhav");
 
                 android.net.Uri uri = getContentResolver().insert(
                     MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values);
+
                 if (uri != null) {
-                    OutputStream out = getContentResolver().openOutputStream(uri);
-                    bitmap.compress(Bitmap.CompressFormat.PNG, 100, out);
-                    out.close();
+                    try (OutputStream out = getContentResolver().openOutputStream(uri)) {
+                        if (out != null) {
+                            bitmap.compress(Bitmap.CompressFormat.PNG, 100, out);
+                        }
+                    }
                 }
-                bitmap.recycle();
-                stopSelf();
+
             } catch (Exception e) {
                 android.util.Log.e("MadhavScreen", "Capture failed", e);
-                stopSelf();
             } finally {
+                if (bitmap != null) bitmap.recycle();
                 if (image != null) image.close();
+                stopSelf();
             }
         }, new Handler(Looper.getMainLooper()));
 
@@ -110,7 +151,7 @@ public class CaptureService extends Service {
     }
 
     @Override
-    public android.os.IBinder onBind(Intent intent) {
+    public IBinder onBind(Intent intent) {
         return null;
     }
 }
